@@ -1,0 +1,7 @@
+port: "8080"
+
+db: 
+  user: "ivan"
+  host: "localhost"
+  port: "5432"
+  name: "todo-db"
