@@ -6,7 +6,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"todo-api/internal/handler"
+	"todo-api/internal/repository"
+	"todo-api/internal/service"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
@@ -21,9 +25,9 @@ func main() {
 	}
 
 	var (
-		user = viper.GetString("db.user")
-		pass = os.Getenv("DB_PASS")
-		host = viper.GetString("db.host")
+		user   = viper.GetString("db.user")
+		pass   = os.Getenv("DB_PASS")
+		host   = viper.GetString("db.host")
 		dbport = viper.GetString("db.port")
 		dbname = viper.GetString("db.name")
 	)
@@ -37,13 +41,19 @@ func main() {
 
 	log.Println("Successfully connected to database")
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	todoRepo := repository.NewRepository(db)
+	todoService := service.NewTodoService(todoRepo)
+	todoHandler := handler.NewTodoHandler(todoService)
+
+	r := chi.NewRouter()
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Server is running!"))
 	})
+	r.Post("/todos", todoHandler.CreateTodo)
 
 	port := ":" + viper.GetString("port")
 	log.Printf("Server started successfully on port %s\n", port)
-	log.Fatal(http.ListenAndServe(port, nil))
+	log.Fatal(http.ListenAndServe(port, r))
 }
 
 func initConfig() error {
