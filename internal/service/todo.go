@@ -9,11 +9,15 @@ import (
 	"github.com/google/uuid"
 )
 
-type todoService struct {
-	todoRepo repository.TodoRepository
+type TodoService struct {
+	todoRepo repository.Todo
 }
 
-func (s *todoService) CreateTodo(req model.CreateTodoDto) (*model.Todo, error) {
+func NewTodoService(todoRepo repository.Todo) *TodoService {
+	return &TodoService{todoRepo}
+}
+
+func (s *TodoService) CreateTodo(req model.CreateTodoDto) (*model.Todo, error) {
 	if req.Text == "" {
 		return nil, errors.New("text cannot be empty")
 	}
@@ -34,4 +38,13 @@ func (s *todoService) CreateTodo(req model.CreateTodoDto) (*model.Todo, error) {
 	}
 
 	return todo, nil
+}
+
+func (s *TodoService) GetAllTodos() ([]model.Todo, error) {
+	todos, err := s.todoRepo.GetAllTodos()
+	if err != nil {
+		return nil, err
+	}
+
+	return todos, nil
 }

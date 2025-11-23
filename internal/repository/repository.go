@@ -6,10 +6,17 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-type TodoRepository interface {
+type Todo interface {
 	CreateTodo(todo *model.Todo) error
+	GetAllTodos() ([]model.Todo, error)
 }
 
-func NewRepository(db *pgx.Conn) TodoRepository {
-	return &todoRepository{db}
+type Repository struct {
+	Todo
+}
+
+func NewRepository(db *pgx.Conn) *Repository {
+	return &Repository{
+		Todo: NewTodoPostgres(db),
+	}
 }

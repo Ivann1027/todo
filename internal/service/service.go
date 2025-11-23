@@ -5,10 +5,17 @@ import (
 	"todo-api/internal/repository"
 )
 
-type TodoService interface {
+type Todo interface {
 	CreateTodo(req model.CreateTodoDto) (*model.Todo, error)
+	GetAllTodos() ([]model.Todo, error)
 }
 
-func NewTodoService(todoRepo repository.TodoRepository) TodoService {
-	return &todoService{todoRepo}
+type Service struct {
+	Todo
+}
+
+func NewService(repos *repository.Repository) *Service {
+	return &Service{
+		Todo: NewTodoService(repos.Todo),
+	}
 }
