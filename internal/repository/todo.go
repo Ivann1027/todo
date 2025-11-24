@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"todo-api/internal/model"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -17,11 +18,11 @@ func NewTodoPostgres(db *pgx.Conn) *TodoPostgres {
 }
 
 func (r *TodoPostgres) CreateTodo(todo *model.Todo) error {
-	query := "insert into todos (id, text, is_done) values ($1, $2, $3) returning id;"
+	query := "insert into todos (id, text, is_done) values ($1, $2, $3);"
 
-	err := r.db.QueryRow(context.Background(), query, todo.Id, todo.Text, todo.IsDone).Scan(&todo.Id)
+	_, err := r.db.Exec(context.Background(), query, todo.Id, todo.Text, todo.IsDone)
 	if err != nil {
-		return fmt.Errorf("failed to create todo in db: %w", err)
+		return fmt.Errorf("failed to create todo: %w", err)
 	}
 
 	return nil
@@ -49,4 +50,19 @@ func (r *TodoPostgres) GetAllTodos() ([]model.Todo, error) {
 	}
 
 	return todos, nil
+}
+
+func (r *TodoPostgres) DeleteTodo(id uuid.UUID) error {
+	query := "delete from todos where id = $1;"
+
+	result, err := r.db.Exec(context.Background(), query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete todo: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("todo with id %s not found", id)
+	}
+
+	return nil
 }

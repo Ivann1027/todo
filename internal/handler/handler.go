@@ -27,6 +27,7 @@ func InitRouter(h *Handler) http.Handler {
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/todos", h.CreateTodo)
 		r.Get("/todos", h.GetAllTodos)
+		r.Delete("/todos/{todoId}", h.DeleteTodo)
 	})
 
 	return r

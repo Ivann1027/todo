@@ -40,7 +40,7 @@ func main() {
 	handlers := handler.NewHandler(services)
 
 	router := handler.InitRouter(handlers)
-	port := ":" + viper.GetString("port")
+	port := viper.GetString("port")
 	srv := new(server.Server)
 
 	if err := srv.Run(port, router); err != nil {

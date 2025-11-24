@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"todo-api/internal/model"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 func (h *Handler) CreateTodo(w http.ResponseWriter, r *http.Request) {
@@ -33,4 +36,24 @@ func (h *Handler) GetAllTodos(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(todos)
+}
+
+func (h *Handler) DeleteTodo(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "todoId")
+	if idStr == "" {
+		http.Error(w, "Todo is is required", http.StatusBadRequest)
+		return
+	}
+
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+
+	err = h.services.Todo.DeleteTodo(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

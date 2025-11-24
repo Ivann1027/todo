@@ -48,3 +48,11 @@ func (s *TodoService) GetAllTodos() ([]model.Todo, error) {
 
 	return todos, nil
 }
+
+func (s *TodoService) DeleteTodo(id uuid.UUID) error {
+	if id == uuid.Nil {
+		return errors.New("todo id is required")
+	}
+
+	return s.todoRepo.DeleteTodo(id)
+}
