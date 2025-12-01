@@ -28,6 +28,7 @@ func InitRouter(h *Handler) http.Handler {
 		r.Post("/todos", h.CreateTodo)
 		r.Get("/todos", h.GetAllTodos)
 		r.Delete("/todos/{todoId}", h.DeleteTodo)
+		r.Patch("/todos/{todoId}", h.UpdateTodo)
 	})
 
 	return r

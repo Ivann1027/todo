@@ -11,3 +11,8 @@ type Todo struct {
 type CreateTodoDto struct {
 	Text string `json:"text"`
 }
+
+type UpdateTodoDto struct {
+	Text   *string   `json:"text,omitempty"`
+	IsDone *bool     `json:"isDone,omitempty"`
+}

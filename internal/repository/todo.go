@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"todo-api/internal/model"
 
@@ -65,4 +66,31 @@ func (r *TodoPostgres) DeleteTodo(id uuid.UUID) error {
 	}
 
 	return nil
+}
+
+func (r *TodoPostgres) UpdateTodo(id uuid.UUID, dto model.UpdateTodoDto) (model.Todo, error) {
+	textParam := any(nil)
+	if dto.Text != nil {
+		textParam = *dto.Text
+	}
+
+	isDoneParam := any(nil)
+	if dto.IsDone != nil {
+		isDoneParam = *dto.IsDone
+	}
+
+	query := "update todos set text = coalesce($2, text), is_done = coalesce($3, is_done) where id = $1 returning id, text, is_done"
+
+	var todo model.Todo
+
+	err := r.db.QueryRow(context.Background(), query, id, textParam, isDoneParam).
+		Scan(&todo.Id, &todo.Text, &todo.IsDone)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return model.Todo{}, fmt.Errorf("todo with id %s not found", id)
+		}
+		return model.Todo{}, fmt.Errorf("failed to update todo: %w", err)
+	}
+
+	return todo, nil
 }

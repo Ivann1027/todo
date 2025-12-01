@@ -11,6 +11,7 @@ type Todo interface {
 	CreateTodo(todo *model.Todo) error
 	GetAllTodos() ([]model.Todo, error)
 	DeleteTodo(id uuid.UUID) error
+	UpdateTodo(id uuid.UUID, dto model.UpdateTodoDto) (model.Todo, error)
 }
 
 type Repository struct {

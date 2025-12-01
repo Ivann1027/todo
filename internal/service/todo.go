@@ -56,3 +56,29 @@ func (s *TodoService) DeleteTodo(id uuid.UUID) error {
 
 	return s.todoRepo.DeleteTodo(id)
 }
+
+func (s *TodoService) UpdateTodo(id uuid.UUID, dto model.UpdateTodoDto) (model.Todo, error) {
+	if id == uuid.Nil {
+		return model.Todo{}, errors.New("todo id is required")
+	}
+
+	if dto.Text == nil && dto.IsDone == nil {
+		return model.Todo{}, errors.New("at least one field (text or isDone) must be provided")
+	}
+
+	if dto.Text != nil {
+		if *dto.Text == "" {
+			return model.Todo{}, errors.New("todo text cannot be an empty string")
+		}
+		if len(*dto.Text) > 500 {
+			return model.Todo{}, errors.New("todo text is too long (max 500 characters)")
+		}
+	}
+
+	todo, err := s.todoRepo.UpdateTodo(id, dto)
+	if err != nil {
+		return model.Todo{}, err
+	}
+
+	return todo, nil
+}
