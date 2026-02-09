@@ -1,0 +1,37 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: todo-db
+    restart: always
+    environment:
+      POSTGRES_USER: ivan
+      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: todo-db
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ivan -d todo-db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: todo-api
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_PASS: 1234
+    ports:
+      - "8080:8080"
+
+volumes:
+  db-data:
