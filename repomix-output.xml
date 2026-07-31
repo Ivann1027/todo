@@ -1,0 +1,776 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+cmd/
+  api/
+    main.go
+configs/
+  config.yml
+internal/
+  handler/
+    handler.go
+    todo.go
+  model/
+    todo.go
+  repository/
+    postgres.go
+    repository.go
+    todo.go
+  server/
+    server.go
+  service/
+    service.go
+    todo.go
+migrations/
+  20251202161853_init_table_todos.sql
+skripts/
+  wait-for-db.sh
+.gitignore
+docker-compose.yml
+Dockerfile
+entrypoint.sh
+go.mod
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="entrypoint.sh">
+#!/bin/sh
+set -e
+
+echo "Waiting for database..."
+until pg_isready -h db -p 5432 -U ivan -d todo-db; do
+  sleep 2
+done
+
+echo "Running migrations..."
+export PGPASSWORD=1234
+goose -dir ./migrations postgres "host=db user=ivan dbname=todo-db sslmode=disable" up
+
+echo "Starting app..."
+exec ./todo-api
+</file>
+
+<file path="internal/handler/handler.go">
+package handler
+
+import (
+	"net/http"
+	"todo-api/internal/service"
+
+	"github.com/go-chi/chi/v5"
+)
+
+type Handler struct {
+	services *service.Service
+}
+
+func NewHandler(services *service.Service) *Handler {
+	return &Handler{services}
+}
+
+func InitRouter(h *Handler) http.Handler {
+	r := chi.NewRouter()
+
+	// Health-check
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Server is running!"))
+	})
+
+	r.Route("/api/v1", func(r chi.Router) {
+		r.Post("/todos", h.CreateTodo)
+		r.Get("/todos", h.GetAllTodos)
+		r.Delete("/todos/{todoId}", h.DeleteTodo)
+		r.Patch("/todos/{todoId}", h.UpdateTodo)
+	})
+
+	return r
+}
+</file>
+
+<file path="internal/handler/todo.go">
+package handler
+
+import (
+	"encoding/json"
+	"net/http"
+	"strings"
+	"todo-api/internal/model"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+)
+
+func (h *Handler) CreateTodo(w http.ResponseWriter, r *http.Request) {
+	var req model.CreateTodoDto
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid json", http.StatusBadRequest)
+		return
+	}
+
+	todo, err := h.services.Todo.CreateTodo(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(todo)
+}
+
+func (h *Handler) GetAllTodos(w http.ResponseWriter, r *http.Request) {
+	todos, err := h.services.Todo.GetAllTodos()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(todos)
+}
+
+func (h *Handler) DeleteTodo(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "todoId")
+	if idStr == "" {
+		http.Error(w, "Todo is is required", http.StatusBadRequest)
+		return
+	}
+
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	err = h.services.Todo.DeleteTodo(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) UpdateTodo(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "todoId")
+	if idStr == "" {
+		http.Error(w, "Todo id is required", http.StatusBadRequest)
+		return
+	}
+
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var todoDto model.UpdateTodoDto
+	if err := json.NewDecoder(r.Body).Decode(&todoDto); err != nil {
+		http.Error(w, "Invalid json (text or isDone)", http.StatusBadRequest)
+		return
+	}
+
+	todo, err := h.services.Todo.UpdateTodo(id, todoDto)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		} else {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(todo)
+}
+</file>
+
+<file path="internal/model/todo.go">
+package model
+
+import "github.com/google/uuid"
+
+type Todo struct {
+	Id     uuid.UUID `json:"id"`
+	Text   string    `json:"text"`
+	IsDone bool      `json:"isDone"`
+}
+
+type CreateTodoDto struct {
+	Text string `json:"text"`
+}
+
+type UpdateTodoDto struct {
+	Text   *string   `json:"text,omitempty"`
+	IsDone *bool     `json:"isDone,omitempty"`
+}
+</file>
+
+<file path="internal/repository/postgres.go">
+package repository
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/jackc/pgx/v5"
+)
+
+type DBConfig struct {
+	User string
+	Pass string
+	Host string
+	Port string
+	Name string
+}
+
+func NewPostgresDB(cfg DBConfig) (*pgx.Conn, error) {
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s", cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.Name)
+	db, err := pgx.Connect(context.Background(), dsn)
+	if err != nil {
+		return nil, err
+	}
+
+	err = db.Ping(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
+	return db, nil
+}
+</file>
+
+<file path="internal/repository/repository.go">
+package repository
+
+import (
+	"todo-api/internal/model"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+)
+
+type Todo interface {
+	CreateTodo(todo *model.Todo) error
+	GetAllTodos() ([]model.Todo, error)
+	DeleteTodo(id uuid.UUID) error
+	UpdateTodo(id uuid.UUID, dto model.UpdateTodoDto) (model.Todo, error)
+}
+
+type Repository struct {
+	Todo
+}
+
+func NewRepository(db *pgx.Conn) *Repository {
+	return &Repository{
+		Todo: NewTodoPostgres(db),
+	}
+}
+</file>
+
+<file path="internal/repository/todo.go">
+package repository
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"todo-api/internal/model"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+)
+
+type TodoPostgres struct {
+	db *pgx.Conn
+}
+
+func NewTodoPostgres(db *pgx.Conn) *TodoPostgres {
+	return &TodoPostgres{db}
+}
+
+func (r *TodoPostgres) CreateTodo(todo *model.Todo) error {
+	query := "insert into todos (id, text, is_done) values ($1, $2, $3);"
+
+	_, err := r.db.Exec(context.Background(), query, todo.Id, todo.Text, todo.IsDone)
+	if err != nil {
+		return fmt.Errorf("failed to create todo: %w", err)
+	}
+
+	return nil
+}
+
+func (r *TodoPostgres) GetAllTodos() ([]model.Todo, error) {
+	var todos []model.Todo
+	query := "select * from todos;"
+	rows, err := r.db.Query(context.Background(), query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all todos in db: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var todo model.Todo
+		if err := rows.Scan(&todo.Id, &todo.Text, &todo.IsDone); err != nil {
+			return nil, fmt.Errorf("failed to scan todo: %w", err)
+		}
+		todos = append(todos, todo)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during rows iteration: %w", err)
+	}
+
+	return todos, nil
+}
+
+func (r *TodoPostgres) DeleteTodo(id uuid.UUID) error {
+	query := "delete from todos where id = $1;"
+
+	result, err := r.db.Exec(context.Background(), query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete todo: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("todo with id %s not found", id)
+	}
+
+	return nil
+}
+
+func (r *TodoPostgres) UpdateTodo(id uuid.UUID, dto model.UpdateTodoDto) (model.Todo, error) {
+	textParam := any(nil)
+	if dto.Text != nil {
+		textParam = *dto.Text
+	}
+
+	isDoneParam := any(nil)
+	if dto.IsDone != nil {
+		isDoneParam = *dto.IsDone
+	}
+
+	query := "update todos set text = coalesce($2, text), is_done = coalesce($3, is_done) where id = $1 returning id, text, is_done"
+
+	var todo model.Todo
+
+	err := r.db.QueryRow(context.Background(), query, id, textParam, isDoneParam).
+		Scan(&todo.Id, &todo.Text, &todo.IsDone)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return model.Todo{}, fmt.Errorf("todo with id %s not found", id)
+		}
+		return model.Todo{}, fmt.Errorf("failed to update todo: %w", err)
+	}
+
+	return todo, nil
+}
+</file>
+
+<file path="internal/server/server.go">
+package server
+
+import (
+	"net/http"
+	"time"
+)
+
+type Server struct {
+	httpServer *http.Server
+}
+
+func (s *Server) Run(port string, handler http.Handler) error {
+	s.httpServer = &http.Server{
+		Addr: ":" + port,
+		Handler: handler,
+		MaxHeaderBytes: 1 << 20, // 1 MB
+		ReadTimeout: 10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
+	return s.httpServer.ListenAndServe()
+}
+</file>
+
+<file path="internal/service/service.go">
+package service
+
+import (
+	"todo-api/internal/model"
+	"todo-api/internal/repository"
+
+	"github.com/google/uuid"
+)
+
+type Todo interface {
+	CreateTodo(req model.CreateTodoDto) (*model.Todo, error)
+	GetAllTodos() ([]model.Todo, error)
+	DeleteTodo(id uuid.UUID) error
+	UpdateTodo(id uuid.UUID, dto model.UpdateTodoDto) (model.Todo, error)
+}
+
+type Service struct {
+	Todo
+}
+
+func NewService(repos *repository.Repository) *Service {
+	return &Service{
+		Todo: NewTodoService(repos.Todo),
+	}
+}
+</file>
+
+<file path="internal/service/todo.go">
+package service
+
+import (
+	"errors"
+	"fmt"
+	"todo-api/internal/model"
+	"todo-api/internal/repository"
+
+	"github.com/google/uuid"
+)
+
+type TodoService struct {
+	todoRepo repository.Todo
+}
+
+func NewTodoService(todoRepo repository.Todo) *TodoService {
+	return &TodoService{todoRepo}
+}
+
+func (s *TodoService) CreateTodo(req model.CreateTodoDto) (*model.Todo, error) {
+	if req.Text == "" {
+		return nil, errors.New("text cannot be empty")
+	}
+
+	if len(req.Text) > 500 {
+		return nil, errors.New("text is too long (max 500 characters)")
+	}
+
+	todo := &model.Todo{
+		Id:     uuid.New(),
+		Text:   req.Text,
+		IsDone: false,
+	}
+
+	err := s.todoRepo.CreateTodo(todo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create todo in service: %w", err)
+	}
+
+	return todo, nil
+}
+
+func (s *TodoService) GetAllTodos() ([]model.Todo, error) {
+	todos, err := s.todoRepo.GetAllTodos()
+	if err != nil {
+		return nil, err
+	}
+
+	return todos, nil
+}
+
+func (s *TodoService) DeleteTodo(id uuid.UUID) error {
+	if id == uuid.Nil {
+		return errors.New("todo id is required")
+	}
+
+	return s.todoRepo.DeleteTodo(id)
+}
+
+func (s *TodoService) UpdateTodo(id uuid.UUID, dto model.UpdateTodoDto) (model.Todo, error) {
+	if id == uuid.Nil {
+		return model.Todo{}, errors.New("todo id is required")
+	}
+
+	if dto.Text == nil && dto.IsDone == nil {
+		return model.Todo{}, errors.New("at least one field (text or isDone) must be provided")
+	}
+
+	if dto.Text != nil {
+		if *dto.Text == "" {
+			return model.Todo{}, errors.New("todo text cannot be an empty string")
+		}
+		if len(*dto.Text) > 500 {
+			return model.Todo{}, errors.New("todo text is too long (max 500 characters)")
+		}
+	}
+
+	todo, err := s.todoRepo.UpdateTodo(id, dto)
+	if err != nil {
+		return model.Todo{}, err
+	}
+
+	return todo, nil
+}
+</file>
+
+<file path="migrations/20251202161853_init_table_todos.sql">
+-- 20251202161853_init_table_todos.sql
+
+-- +goose Up
+create extension if not exists "pgcrypto";
+
+create table if not exists todos (
+	id uuid primary key default gen_random_uuid(),
+	text text not null,
+	is_done boolean not null default false
+);
+
+-- +goose Down
+drop table if exists todos;
+</file>
+
+<file path="skripts/wait-for-db.sh">
+#!/bin/sh
+# wait-for-db.sh
+
+set -e
+
+host="$1"
+shift
+cmd="$@"
+
+until PGPASSWORD=1234 psql -h "$host" -U "ivan" -d "todo-db" -c '\q'; do
+  >&2 echo "Postgres is unavailable - sleeping"
+  sleep 2
+done
+
+>&2 echo "Postgres is up - executing command"
+exec $cmd
+</file>
+
+<file path="docker-compose.yml">
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: todo-db
+    restart: always
+    environment:
+      POSTGRES_USER: ivan
+      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: todo-db
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ivan -d todo-db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: todo-api
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_PASS: 1234
+    ports:
+      - "8080:8080"
+
+volumes:
+  db-data:
+</file>
+
+<file path="configs/config.yml">
+port: "8080"
+
+db: 
+  user: "ivan"
+  host: "db"
+  port: "5432"
+  name: "todo-db"
+</file>
+
+<file path=".gitignore">
+.env
+*.exe
+*.test
+.dockerignore
+</file>
+
+<file path="Dockerfile">
+FROM golang:1.24-alpine AS builder
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+COPY .env .env
+
+RUN go install github.com/pressly/goose/v3/cmd/goose@v3.21.1
+
+RUN CGO_ENABLED=0 GOOS=linux go build -o todo-api ./cmd/api/main.go
+
+FROM alpine:3.20
+
+RUN apk --no-cache add \
+    tzdata \
+    ca-certificates \
+    postgresql-client \
+    && update-ca-certificates
+
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+WORKDIR /app
+
+COPY --from=builder --chown=appuser:appgroup /app/todo-api .
+COPY --from=builder --chown=appuser:appgroup /go/bin/goose /usr/local/bin/goose
+COPY --from=builder --chown=appuser:appgroup /app/configs ./configs
+COPY --from=builder --chown=appuser:appgroup /app/migrations ./migrations
+
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+ENTRYPOINT ["/app/entrypoint.sh"]
+</file>
+
+<file path="cmd/api/main.go">
+package main
+
+import (
+	"context"
+	"log"
+	"os"
+	"todo-api/internal/handler"
+	"todo-api/internal/repository"
+	"todo-api/internal/server"
+	"todo-api/internal/service"
+
+	// "github.com/joho/godotenv"
+	"github.com/spf13/viper"
+)
+
+func main() {
+	if err := initConfig(); err != nil {
+		log.Fatalf("Initialization config error: %v\n", err)
+	}
+	// if err := godotenv.Load(); err != nil {
+	// 	log.Fatalf("env loading error: %v\n", err)
+	// }
+
+	db, err := repository.NewPostgresDB(repository.DBConfig{
+		User: viper.GetString("db.user"),
+		Pass: os.Getenv("DB_PASS"),
+		Host: viper.GetString("db.host"),
+		Port: viper.GetString("db.port"),
+		Name: viper.GetString("db.name"),
+	})
+	if err != nil {
+		log.Fatalf("Unable to connect to db: %v\n", err)
+	}
+	defer db.Close(context.Background())
+
+	log.Println("Successfully connected to database")
+
+	repos := repository.NewRepository(db)
+	services := service.NewService(repos)
+	handlers := handler.NewHandler(services)
+
+	router := handler.InitRouter(handlers)
+	port := viper.GetString("port")
+	srv := new(server.Server)
+
+	if err := srv.Run(port, router); err != nil {
+		log.Fatalf("Unable to start server: %v\n", err)
+	} else {
+		log.Printf("Server successfully started on port: %s\n", port)
+	}
+}
+
+func initConfig() error {
+	viper.AddConfigPath("configs")
+	viper.SetConfigName("config")
+	return viper.ReadInConfig()
+}
+</file>
+
+<file path="go.mod">
+module todo-api
+
+go 1.24.0
+
+require (
+	github.com/go-chi/chi/v5 v5.2.3
+	github.com/google/uuid v1.6.0
+	github.com/jackc/pgx/v5 v5.7.6
+	github.com/joho/godotenv v1.5.1
+	github.com/spf13/viper v1.21.0
+)
+
+require (
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
+	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
+	github.com/rogpeppe/go-internal v1.14.1 // indirect
+	github.com/sagikazarmark/locafero v0.11.0 // indirect
+	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
+	github.com/spf13/afero v1.15.0 // indirect
+	github.com/spf13/cast v1.10.0 // indirect
+	github.com/spf13/pflag v1.0.10 // indirect
+	github.com/subosito/gotenv v1.6.0 // indirect
+	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	golang.org/x/crypto v0.40.0 // indirect
+	golang.org/x/sync v0.18.0 // indirect
+	golang.org/x/sys v0.34.0 // indirect
+	golang.org/x/text v0.28.0 // indirect
+)
+</file>
+
+</files>
