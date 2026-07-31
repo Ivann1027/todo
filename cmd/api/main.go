@@ -9,7 +9,7 @@ import (
 	"todo-api/internal/server"
 	"todo-api/internal/service"
 
-	"github.com/joho/godotenv"
+	// "github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
@@ -17,9 +17,9 @@ func main() {
 	if err := initConfig(); err != nil {
 		log.Fatalf("Initialization config error: %v\n", err)
 	}
-	if err := godotenv.Load(); err != nil {
-		log.Fatalf("env loading error: %v\n", err)
-	}
+	// if err := godotenv.Load(); err != nil {
+	// 	log.Fatalf("env loading error: %v\n", err)
+	// }
 
 	db, err := repository.NewPostgresDB(repository.DBConfig{
 		User: viper.GetString("db.user"),
