@@ -21,7 +21,10 @@ func InitRouter(h *Handler) http.Handler {
 	// Health-check
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Server is running!"))
+		if _, err := w.Write([]byte("Server is running!")); err != nil {
+			http.Error(w, "Failed to write response", http.StatusInternalServerError)
+			return
+		}
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {

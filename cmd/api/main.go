@@ -31,7 +31,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Unable to connect to db: %v\n", err)
 	}
-	defer db.Close(context.Background())
+	defer func() {
+		if err := db.Close(context.Background()); err != nil {
+			log.Printf("Failed to close database connection: %v", err)
+		}
+	}()
 
 	log.Println("Successfully connected to database")
 

@@ -1,0 +1,21 @@
+# .golangci.yml
+version: "2"
+
+linters:
+  enable:
+    - errcheck          # Проверка необработанных ошибок
+    - govet             # Официальный анализатор Go
+    - ineffassign       # Бесполезные присваивания
+    - staticcheck       # Включает gosimple + многое другое
+    - unused            # Неиспользуемые переменные/функции
+    - misspell          # Опечатки
+
+formatters:
+  enable:
+    - gofmt             # Форматирование
+    - goimports         # Проверка импортов (из formatters убрать)
+
+issues:
+  exclude-use-default: false
+  exclude:
+    - "exported: exported .* should have comment"
