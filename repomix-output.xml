@@ -59,6 +59,7 @@ internal/
     server.go
   service/
     service.go
+    todo_test.go
     todo.go
 migrations/
   20251202161853_init_table_todos.sql
@@ -74,21 +75,74 @@ go.mod
 <files>
 This section contains the contents of the repository's files.
 
-<file path="entrypoint.sh">
-#!/bin/sh
-set -e
+<file path="internal/service/todo_test.go">
+package service
 
-echo "Waiting for database..."
-until pg_isready -h db -p 5432 -U ivan -d todo-db; do
-  sleep 2
-done
+import (
+	"testing"
+	"todo-api/internal/model"
 
-echo "Running migrations..."
-export PGPASSWORD=1234
-goose -dir ./migrations postgres "host=db user=ivan dbname=todo-db sslmode=disable" up
+	"github.com/google/uuid"
+)
 
-echo "Starting app..."
-exec ./todo-api
+// Repository mocks
+type MockTodoRepository struct {
+	todos map[uuid.UUID]model.Todo
+}
+func (m *MockTodoRepository) CreateTodo(todo *model.Todo) error {
+	m.todos[todo.Id] = *todo
+	return nil
+}
+func (m *MockTodoRepository) GetAllTodos() ([]model.Todo, error) {
+	return nil, nil
+}
+func (m *MockTodoRepository) DeleteTodo(id uuid.UUID) error {
+	return nil
+}
+func (m *MockTodoRepository) UpdateTodo(id uuid.UUID, dto model.UpdateTodoDto) (model.Todo, error) {
+	return model.Todo{}, nil
+}
+
+// Test functions
+func TestCreateTodo(t *testing.T) {
+	mockRepo := &MockTodoRepository{
+		todos: make(map[uuid.UUID]model.Todo),
+	}
+	todoService := NewTodoService(mockRepo)
+
+	tests := []struct{
+		name string
+		reqData model.CreateTodoDto
+		wantError bool
+	}{
+		{"empty text", model.CreateTodoDto{Text: ""}, true},
+		{"normal text", model.CreateTodoDto{Text: "Починить машину"}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := todoService.CreateTodo(tt.reqData)
+			if tt.wantError {
+				 if err == nil {
+					t.Errorf("CreateTodo expected error, got %+v", got)
+				 }
+				 return
+			}
+			if err != nil {
+				t.Errorf("CreateTodo unexpected error: %s", err)
+			}
+			if got.Id == uuid.Nil {
+				t.Errorf("Expected valid UUID, got nil")
+			}
+			if got.Text != tt.reqData.Text {
+				t.Errorf("Expected text - %s, got - %s", tt.reqData.Text, got.Text)
+			}
+			if got.IsDone != false {
+				t.Errorf("Expected isDone=false, got %v", got.IsDone)
+			}
+		})
+	}
+}
 </file>
 
 <file path="internal/handler/handler.go">
@@ -624,23 +678,6 @@ volumes:
   db-data:
 </file>
 
-<file path="configs/config.yml">
-port: "8080"
-
-db: 
-  user: "ivan"
-  host: "db"
-  port: "5432"
-  name: "todo-db"
-</file>
-
-<file path=".gitignore">
-.env
-*.exe
-*.test
-.dockerignore
-</file>
-
 <file path="Dockerfile">
 FROM golang:1.24-alpine AS builder
 
@@ -677,6 +714,74 @@ COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 ENTRYPOINT ["/app/entrypoint.sh"]
+</file>
+
+<file path="entrypoint.sh">
+#!/bin/sh
+set -e
+
+echo "Waiting for database..."
+until pg_isready -h db -p 5432 -U ivan -d todo-db; do
+  sleep 2
+done
+
+echo "Running migrations..."
+export PGPASSWORD=1234
+goose -dir ./migrations postgres "host=db user=ivan dbname=todo-db sslmode=disable" up
+
+echo "Starting app..."
+exec ./todo-api
+</file>
+
+<file path="configs/config.yml">
+port: "8080"
+
+db: 
+  user: "ivan"
+  host: "db"
+  port: "5432"
+  name: "todo-db"
+</file>
+
+<file path=".gitignore">
+.env
+*.exe
+*.test
+.dockerignore
+</file>
+
+<file path="go.mod">
+module todo-api
+
+go 1.24.0
+
+require (
+	github.com/go-chi/chi/v5 v5.2.3
+	github.com/google/uuid v1.6.0
+	github.com/jackc/pgx/v5 v5.7.6
+	github.com/joho/godotenv v1.5.1
+	github.com/spf13/viper v1.21.0
+)
+
+require (
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
+	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
+	github.com/rogpeppe/go-internal v1.14.1 // indirect
+	github.com/sagikazarmark/locafero v0.11.0 // indirect
+	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
+	github.com/spf13/afero v1.15.0 // indirect
+	github.com/spf13/cast v1.10.0 // indirect
+	github.com/spf13/pflag v1.0.10 // indirect
+	github.com/subosito/gotenv v1.6.0 // indirect
+	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	golang.org/x/crypto v0.40.0 // indirect
+	golang.org/x/sync v0.18.0 // indirect
+	golang.org/x/sys v0.34.0 // indirect
+	golang.org/x/text v0.28.0 // indirect
+)
 </file>
 
 <file path="cmd/api/main.go">
@@ -737,40 +842,6 @@ func initConfig() error {
 	viper.SetConfigName("config")
 	return viper.ReadInConfig()
 }
-</file>
-
-<file path="go.mod">
-module todo-api
-
-go 1.24.0
-
-require (
-	github.com/go-chi/chi/v5 v5.2.3
-	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.7.6
-	github.com/joho/godotenv v1.5.1
-	github.com/spf13/viper v1.21.0
-)
-
-require (
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
-	github.com/jackc/pgpassfile v1.0.0 // indirect
-	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
-	github.com/rogpeppe/go-internal v1.14.1 // indirect
-	github.com/sagikazarmark/locafero v0.11.0 // indirect
-	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
-	github.com/spf13/afero v1.15.0 // indirect
-	github.com/spf13/cast v1.10.0 // indirect
-	github.com/spf13/pflag v1.0.10 // indirect
-	github.com/subosito/gotenv v1.6.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/crypto v0.40.0 // indirect
-	golang.org/x/sync v0.18.0 // indirect
-	golang.org/x/sys v0.34.0 // indirect
-	golang.org/x/text v0.28.0 // indirect
-)
 </file>
 
 </files>
