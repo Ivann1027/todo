@@ -25,7 +25,10 @@ func (h *Handler) CreateTodo(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(todo)
+	if err := json.NewEncoder(w).Encode(todo); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 func (h *Handler) GetAllTodos(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +39,10 @@ func (h *Handler) GetAllTodos(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(todos)
+	if err := json.NewEncoder(w).Encode(todos); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 func (h *Handler) DeleteTodo(w http.ResponseWriter, r *http.Request) {
@@ -93,5 +99,8 @@ func (h *Handler) UpdateTodo(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(todo)
+	if err := json.NewEncoder(w).Encode(todo); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
